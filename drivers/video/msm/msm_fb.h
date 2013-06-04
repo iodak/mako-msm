@@ -39,7 +39,6 @@
 #include <linux/types.h>
 #include <linux/switch.h>
 #include <linux/msm_mdp.h>
-
 #include "msm_fb_panel.h"
 #include "mdp.h"
 

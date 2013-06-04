@@ -48,6 +48,10 @@
 #undef CONFIG_HAS_EARLYSUSPEND
 #endif
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+#undef CONFIG_HAS_EARLYSUSPEND
+#endif
+
 uint32 mdp4_extn_disp;
 
 static struct clk *mdp_clk;
