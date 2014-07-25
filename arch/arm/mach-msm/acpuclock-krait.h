@@ -274,4 +274,10 @@ struct acpuclk_platform_data {
  */
 extern int acpuclk_krait_init(struct device *dev,
 			      const struct acpuclk_krait_params *params);
+
+#ifdef CONFIG_VOLTAGE_CONTROL
+extern ssize_t acpuclk_get_vdd(char *buf);
+extern ssize_t acpuclk_set_vdd(const char *buf);
+#endif
+
 #endif

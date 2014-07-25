@@ -962,6 +962,48 @@ static void __init cpufreq_table_init(void)
 static void __init cpufreq_table_init(void) {}
 #endif
 
+#ifdef CONFIG_VOLTAGE_CONTROL
+extern ssize_t acpuclk_get_vdd(char *buf)
+{
+	int i = 0;
+	char *out = buf;
+
+	for (i = 0; drv.acpu_freq_tbl[i].speed.khz; i++)
+		if (drv.acpu_freq_tbl[i].use_for_scaling)
+			out += sprintf(out, "%lumhz: %i mV\n",drv.acpu_freq_tbl[i].speed.khz / 1000, 				drv.acpu_freq_tbl[i].vdd_core / 1000);
+
+	return out -buf;
+}
+
+extern ssize_t acpuclk_set_vdd(const char *buf)
+{
+	int i = 0;
+	unsigned long volt_cur;
+	int ret =0;
+	char size_cur[16];
+
+	for (i = 0; drv.acpu_freq_tbl[i].speed.khz != 0; i++){
+		if (drv.acpu_freq_tbl[i].use_for_scaling){
+			ret = sscanf(buf, "%lu", &volt_cur);
+			if (ret != 1)
+				return -EINVAL;
+
+			if (volt_cur >= 600 && volt_cur <= 1450){
+				pr_info("user mv tbl[%i]: %lu\n", i, volt_cur);
+				drv.acpu_freq_tbl[i].vdd_core = volt_cur * 1000;
+			}
+			
+			ret = sscanf(buf, "%s", size_cur);
+			if (ret == 0)
+				return 0;
+			buf += (strlen(size_cur)+1);
+		}
+	}
+
+	return ret;
+}
+#endif
+
 static void __init dcvs_freq_init(void)
 {
 	int i;
