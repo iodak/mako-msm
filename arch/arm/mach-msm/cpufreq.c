@@ -81,6 +81,12 @@ struct cpu_freq {
 
 static DEFINE_PER_CPU(struct cpu_freq, cpu_freq_info);
 
+
+#ifdef CONFIG_CAP_SCREENOFF
+#define RESTRICTED_CLOCK	702000
+uint32_t capped_screenoff = RESTRICTED_CLOCK;
+#endif
+
 static void update_l2_bw(int *also_cpu)
 {
 	int rc = 0, cpu;
@@ -315,6 +321,63 @@ int msm_cpufreq_set_freq_limits(uint32_t cpu, uint32_t min, uint32_t max)
 }
 EXPORT_SYMBOL(msm_cpufreq_set_freq_limits);
 
+#ifdef CONFIG_CAP_SCREENOFF
+static ssize_t show_screen_off_max_freq(struct cpufreq_policy *policy, char *buf)
+{
+	return sprintf(buf, "%u\n", capped_screenoff);
+}
+
+static ssize_t store_screen_off_max_freq(struct cpufreq_policy *policy,
+const char *buf, size_t count)
+{
+	int ret;
+	unsigned int freq;
+	ret = sscanf(buf, "%u", &freq);
+	if (ret != 1)
+		return -EINVAL;
+
+	if ((freq >= 384000) && (freq <= 1512000)){
+		capped_screenoff = freq;
+		pr_info("screen off max freq is = %u\n", freq);
+	}
+	else {
+		pr_info("screen off max freq must bu set from(384000 to 1512000)\n You set it to = %u\n", freq);
+		capped_screenoff = RESTRICTED_CLOCK;
+		freq = RESTRICTED_CLOCK;
+	}
+
+	return count;
+}
+
+cpufreq_freq_attr_rw(screen_off_max_freq);
+
+static void msm_cpufreq_early_suspend(struct early_suspend *h)
+{
+	int cpu;
+
+	for_each_possible_cpu(cpu) {
+		msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, capped_screenoff);
+		pr_info("msm_cpufreq_early_suspend: set screen off max for cpu %i %u\n",cpu,
+                	capped_screenoff);
+	}
+}
+
+static void msm_cpufreq_late_resume(struct early_suspend *h)
+{
+	int cpu;
+	for_each_possible_cpu(cpu) {
+		msm_cpufreq_set_freq_limits(cpu, MSM_CPUFREQ_NO_LIMIT, MSM_CPUFREQ_NO_LIMIT);
+        	pr_info("msm_cpufreq_late_resume: restore freq to max for CPU %i\n", cpu);
+	}
+}
+
+static struct early_suspend msm_cpufreq_early_suspend_handler = {
+	.level = EARLY_SUSPEND_LEVEL_DISABLE_FB,
+	.suspend = msm_cpufreq_early_suspend,
+	.resume = msm_cpufreq_late_resume,
+};
+#endif
+
 static int __cpuinit msm_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int cur_freq;
@@ -457,6 +520,9 @@ static int msm_cpufreq_resume(struct cpufreq_policy *policy)
 
 static struct freq_attr *msm_freq_attr[] = {
 	&cpufreq_freq_attr_scaling_available_freqs,
+#ifdef CONFIG_CAP_SCREENOFF
+	&screen_off_max_freq,
+#endif
 	NULL,
 };
 
@@ -671,6 +737,9 @@ static int __init msm_cpufreq_register(void)
 	platform_driver_probe(&msm_cpufreq_plat_driver, msm_cpufreq_probe);
 	msm_cpufreq_wq = alloc_workqueue("msm-cpufreq", WQ_HIGHPRI, 0);
 	register_hotcpu_notifier(&msm_cpufreq_cpu_notifier);
+#ifdef CONFIG_CAP_SCREENOFF
+	register_early_suspend(&msm_cpufreq_early_suspend_handler);
+#endif
 	return cpufreq_register_driver(&msm_cpufreq_driver);
 }
 

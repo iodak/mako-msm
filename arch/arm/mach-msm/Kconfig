@@ -2631,4 +2631,11 @@ config VOLTAGE_CONTROL
 	help
 	This enables userspace CPU Voltage Control
 
+config CAP_SCREENOFF
+	bool "Limit screen off freq"
+	default y
+	help
+		This will limit max screen off freq to
+		selected freq
+
 endif
