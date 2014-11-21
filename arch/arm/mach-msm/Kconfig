@@ -2638,4 +2638,12 @@ config CAP_SCREENOFF
 		This will limit max screen off freq to
 		selected freq
 
+config RUNNABLE_HOTPLUG
+	bool "runnable treads hotplug driver"
+	default y
+	help
+		This will replace stock msm_mpdecision hotplug 
+		Based on nvidia runnable governor from cpuquiet framework
+		ported to msm by iodak
+
 endif
