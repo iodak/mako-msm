@@ -188,7 +188,7 @@ static unsigned int get_lightest_loaded_cpu_n(void)
 
 static void __ref runnables_work_func(struct work_struct *work)
 {
-	unsigned int cpu = nr_cpu_ids;
+	unsigned int cpu;
 	int action;
 
 	if (runnables_state != RUNNING)
@@ -196,8 +196,7 @@ static void __ref runnables_work_func(struct work_struct *work)
 
 	action = get_action(nr_run_last);
 	if (action > 0) {
-		cpu = cpumask_next_zero(-1, cpu_online_mask);
-		if (cpu < nr_cpu_ids)
+		for_each_cpu_not(cpu, cpu_online_mask)
 			cpu_up(cpu);
 	} else if (action < 0) {
 		cpu = get_lightest_loaded_cpu_n();
