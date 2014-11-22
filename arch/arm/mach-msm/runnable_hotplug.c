@@ -201,9 +201,8 @@ static void __ref runnables_work_func(struct work_struct *work)
 			cpu_up(cpu);
 	} else if (action < 0) {
 		cpu = get_lightest_loaded_cpu_n();
-		if (cpu > 0)
-			if (cpu < nr_cpu_ids)
-				cpu_down(cpu);
+		if (cpu < nr_cpu_ids)
+			cpu_down(cpu);
 	}
 }
 
