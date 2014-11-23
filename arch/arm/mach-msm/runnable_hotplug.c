@@ -28,7 +28,6 @@
 
 #define DEFAULT_MIN_CPUS 1
 #define DEFAULT_MAX_CPUS NR_CPUS
-#define HOTPLUG_DELAY_MS	100
 
 typedef enum {
 	DISABLED,
@@ -38,7 +37,6 @@ typedef enum {
 
 static struct work_struct runnables_work;
 static struct timer_list runnables_timer;
-static unsigned long hotplug_timeout;
 
 static RUNNABLES_STATE runnables_state;
 /* configurable parameters */
@@ -218,8 +216,6 @@ static int __init runnables_hotplug_init(void)
 
 	init_timer(&runnables_timer);
 	runnables_timer.function = runnables_avg_sampler;
-
-	hotplug_timeout = msecs_to_jiffies(HOTPLUG_DELAY_MS);
 
 	for(i = 0; i < ARRAY_SIZE(nr_run_thresholds); ++i) {
 		if (i < ARRAY_SIZE(default_thresholds))
