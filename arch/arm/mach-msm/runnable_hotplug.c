@@ -25,23 +25,12 @@
 #include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/sched.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
 
 #define DEFAULT_MIN_CPUS 1
 #define DEFAULT_MAX_CPUS NR_CPUS
 
-typedef enum {
-	DISABLED,
-	IDLE,
-	RUNNING,
-} RUNNABLES_STATE;
-
-static struct work_struct runnables_work;
-static struct timer_list runnables_timer;
-
-static RUNNABLES_STATE runnables_state;
-/* configurable parameters */
-static unsigned int sample_rate = 20;		/* msec */
-module_param(sample_rate, uint, 0644);
 
 #define NR_FSHIFT_EXP	3
 #define NR_FSHIFT	(1 << NR_FSHIFT_EXP)
@@ -50,13 +39,27 @@ static unsigned int default_thresholds[] = {
 	10, 18, 20, UINT_MAX
 };
 
+typedef enum {
+	DISABLED,
+	RUNNING,
+} RUNNABLES_STATE;
+
+static struct work_struct runnables_work;
+static struct timer_list runnables_timer;
+
+/* configurable parameters */
+static RUNNABLES_STATE runnables_state;
+static unsigned int sample_rate = 20;		/* msec */
+module_param_named(sample_rate, sample_rate, uint, 0644);
+
 static unsigned int nr_run_last;
 static unsigned int nr_run_hysteresis = 2;		/* 1 / 2 thread */
-module_param(nr_run_hysteresis, uint, 0644);
+module_param_named(nr_run_hysteresis, nr_run_hysteresis, uint, 0644);
 
 static unsigned int default_threshold_level = 4;	/* 1 / 4 thread */
+module_param_named(default_threshold_level, default_threshold_level, uint, 0644);
+
 static unsigned int nr_run_thresholds[NR_CPUS];
-static wait_queue_head_t wait_cpu;
 
 DEFINE_MUTEX(runnables_lock);
 
@@ -203,14 +206,70 @@ static void __ref runnables_work_func(struct work_struct *work)
 	}
 }
 
+static ssize_t runnables_on_show (struct kobject *kobj, struct kobj_attribute *attr, 
+					char *buf)
+{
+	return sprintf(buf, "%u\n", runnables_state);
+}
+static ssize_t runnables_on_store(struct kobject *kobj, struct kobj_attribute *attr, 
+					const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+	ret = sscanf(buf, "%u", &val);
+	if (ret != 1 || val < 0 || val > 1)
+		return -EINVAL;
+	
+	if (val == 1){
+		mutex_lock(&runnables_lock);
+		runnables_state = RUNNING;
+		mutex_unlock(&runnables_lock);
+
+		runnables_avg_sampler(0);
+	} else {
+		mutex_lock(&runnables_lock);
+		cancel_work_sync(&runnables_work);
+		runnables_state = DISABLED;
+		mutex_unlock(&runnables_lock);
+	}
+
+	return count;
+}
+
+
+static struct kobj_attribute runnables_on_attribute =
+	__ATTR(runnables_on, 0644, runnables_on_show, runnables_on_store);
+
+static struct attribute *attrs[] = {
+	&runnables_on_attribute.attr,
+	NULL,
+};
+
+static struct attribute_group attr_group = {
+	.attrs = attrs,
+};
+
 static int __init runnables_hotplug_init(void)
 {	
 
-	int i;
+	int i, ret = 0;
+	struct kobject *module_kobj;
 
-	printk(KERN_INFO "RUNABLESS init!\n");
+	printk(KERN_INFO "RUNNABLES init!\n");
 
-	init_waitqueue_head(&wait_cpu);
+	module_kobj = kset_find_obj(module_kset, KBUILD_MODNAME);
+	if (!module_kobj) {
+		pr_err("%s: cannot find kobject for module %s\n", __func__, KBUILD_MODNAME);
+		ret = -ENOENT;
+		goto failed;
+	}
+	
+	
+	ret = sysfs_create_group(module_kobj, &attr_group);
+	if (ret) {
+		pr_err("%s: cannot create kobject attribute group\n", __func__);
+		goto failed;
+	}
 
 	INIT_WORK(&runnables_work, runnables_work_func);
 
@@ -234,6 +293,10 @@ static int __init runnables_hotplug_init(void)
 	runnables_avg_sampler(0);
 
 	return 0;
+failed:
+ 	kobject_put(module_kobj);
+	
+	return ret;
 }
 
 void __exit runnables_hotplug_exit(void)
