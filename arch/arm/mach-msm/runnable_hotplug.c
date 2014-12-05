@@ -192,14 +192,19 @@ static void __ref runnables_work_func(struct work_struct *work)
 {
 	unsigned int cpu;
 	int action;
+	struct cpumask mask;
 
 	if (runnables_state != RUNNING)
 		return;
 
 	action = get_action(nr_run_last);
 	if (action > 0) {
-		for_each_cpu_not(cpu, cpu_online_mask)
-			cpu_up(cpu);
+			/*get cpus that are offline (invert of cpu_online_mask to mask)*/
+			cpumask_complement(&mask, cpu_online_mask);
+			/* take one of them (random) and bring it online*/
+			cpu = cpumask_any(&mask);
+			if (cpu < nr_cpu_ids)
+				cpu_up(cpu);
 	} else if (action < 0) {
 		cpu = get_lightest_loaded_cpu_n();
 		if (cpu < nr_cpu_ids)
