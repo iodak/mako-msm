@@ -34,9 +34,28 @@
 
 #define NR_FSHIFT_EXP	3
 #define NR_FSHIFT	(1 << NR_FSHIFT_EXP)
+
+static unsigned int thresholds_select;
+
 /* avg run threads * 8 (e.g., 11 = 1.375 threads) */
-static unsigned int default_thresholds[] = {
+static unsigned int thresholds_default[] = {
 	10, 18, 20, UINT_MAX
+};
+
+static unsigned int thresholds_performance[] = {
+	8, 16, 18, UINT_MAX
+};
+
+static unsigned int thresholds_powersave[] = {
+	14, 26, 28, UINT_MAX
+};
+
+
+
+static unsigned int *thresholds[] = {
+	thresholds_default,
+	thresholds_performance,
+	thresholds_powersave
 };
 
 typedef enum {
@@ -55,7 +74,6 @@ module_param_named(sample_rate, sample_rate, uint, 0644);
 static unsigned int nr_run_last;
 static unsigned int nr_run_hysteresis = 2;		/* 1 / 2 thread */
 module_param_named(nr_run_hysteresis, nr_run_hysteresis, uint, 0644);
-
 static unsigned int default_threshold_level = 4;	/* 1 / 4 thread */
 static unsigned int nr_run_thresholds[NR_CPUS];
 static unsigned int max_cpus = DEFAULT_MAX_CPUS;
@@ -144,6 +162,7 @@ static int get_action(unsigned int nr_run)
 static void runnables_avg_sampler(unsigned long data)
 {
 	unsigned int nr_run, avg_nr_run;
+	unsigned int *selected_profile = thresholds[thresholds_select];
 	int action;
 
 	rmb();
@@ -153,8 +172,8 @@ static void runnables_avg_sampler(unsigned long data)
 	avg_nr_run = get_avg_nr_runnables();
 	mod_timer(&runnables_timer, jiffies + msecs_to_jiffies(sample_rate));
 
-	for (nr_run = 1; nr_run < ARRAY_SIZE(nr_run_thresholds); nr_run++) {
-		unsigned int nr_threshold = nr_run_thresholds[nr_run - 1];
+	for (nr_run = 1; nr_run < ARRAY_SIZE(thresholds_default); nr_run++) {
+		unsigned int nr_threshold = selected_profile[nr_run - 1];
 		if (nr_run_last <= nr_run)
 			nr_threshold += NR_FSHIFT / nr_run_hysteresis;
 		if (avg_nr_run <= (nr_threshold << (FSHIFT - NR_FSHIFT_EXP)))
@@ -289,17 +308,44 @@ static ssize_t max_cpus_store(struct kobject *kobj, struct kobj_attribute *attr,
 	return count;
 }
 
+static ssize_t thresholds_select_show (struct kobject *kobj, struct kobj_attribute *attr, 
+					char *buf)
+{
+	return sprintf(buf, "%u\n", thresholds_select);
+}
+
+static ssize_t thresholds_select_store(struct kobject *kobj, struct kobj_attribute *attr, 
+					const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+	ret = sscanf(buf, "%u", &val);
+	if (ret != 1 || val < 0 || val > 2)
+		return -EINVAL;
+	
+	thresholds_select = val;
+
+	pr_info("New thresholds_select is %d\nThresholds are now = %d, %d, %d.\n",
+		thresholds_select, thresholds[thresholds_select][0], 
+		thresholds[thresholds_select][1], thresholds[thresholds_select][2]);
+
+	return count;
+}
+
 static struct kobj_attribute runnables_on_attribute =
 	__ATTR(runnables_on, 0644, runnables_on_show, runnables_on_store);
 static struct kobj_attribute min_cpus_attribute =
 	__ATTR(min_cpus, 0644, min_cpus_show, min_cpus_store);
 static struct kobj_attribute max_cpus_attribute =
 	__ATTR(max_cpus, 0644, max_cpus_show, max_cpus_store);
+static struct kobj_attribute thresholds_select_attribute =
+	__ATTR(thresholds_select, 0644, thresholds_select_show, thresholds_select_store);
 
 static struct attribute *attrs[] = {
 	&runnables_on_attribute.attr,
 	&min_cpus_attribute.attr,
 	&max_cpus_attribute.attr,
+	&thresholds_select_attribute.attr,
 	NULL,
 };
 /*************************************sysfs end****************************************/
@@ -336,8 +382,8 @@ static int __init runnables_hotplug_init(void)
 	runnables_timer.function = runnables_avg_sampler;
 
 	for(i = 0; i < ARRAY_SIZE(nr_run_thresholds); ++i) {
-		if (i < ARRAY_SIZE(default_thresholds))
-			nr_run_thresholds[i] = default_thresholds[i];
+		if (i < ARRAY_SIZE(thresholds_default))
+			nr_run_thresholds[i] = thresholds_default[i];
 		else if (i == (ARRAY_SIZE(nr_run_thresholds) - 1))
 			nr_run_thresholds[i] = UINT_MAX;
 		else
