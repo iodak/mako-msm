@@ -12,10 +12,8 @@
 #include <asm/thread_notify.h>
 #include <linux/uaccess.h>
 #include <linux/debugfs.h>
-#include <linux/cpu.h>
-#include "perf_trace_counters.h"
 #define CREATE_TRACE_POINTS
-
+#include "perf_trace_counters.h"
 
 static unsigned int tp_pid_state;
 
@@ -184,3 +182,4 @@ int __exit exit_tracecounters(void)
 	return 0;
 }
 late_initcall(init_tracecounters);
+
